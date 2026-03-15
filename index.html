@@ -51,12 +51,8 @@
             transition: background 0.3s;
         }
         button:disabled { background-color: #999; cursor: not-allowed; }
-        .log-area { margin-top: 1.5rem; max-height: 200px; overflow-y: auto; }
-        .log-item {
-            padding: 8px;
-            border-bottom: 1px solid #eee;
-            font-size: 0.9rem;
-        }
+        .log-area { margin-top: 1.5rem; max-height: 250px; overflow-y: auto; border-top: 1px solid #ddd; }
+        .log-item { padding: 8px; border-bottom: 1px solid #eee; font-size: 0.9rem; }
         .log-success { color: var(--success); font-weight: bold; }
         .log-error { color: var(--error); font-weight: bold; }
         .log-warn { color: #d83b01; }
@@ -83,15 +79,15 @@
 </div>
 
 <script>
-    // הקישור שסיפקת
-    const FLOW_URL = "https://default71aa1650f6e545adbe3746e37d188d.af.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/4da11f9478eb433cb8690c2589dcc774/triggers/manual/paths/invoke?api-version=1";
+    // הקישור המלא והמאובטח שלך
+    const FLOW_URL = "https://default71aa1650f6e545adbe3746e37d188d.af.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/4da11f9478eb433cb8690c2589dcc774/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=YYKMC9XDBfHYDKBi2yFdE3GneU_6to6oip3Oacum2Ww";
 
     function addLog(msg, type = 'normal') {
         const logArea = document.getElementById('logArea');
         const div = document.createElement('div');
         div.className = `log-item log-${type}`;
         div.innerText = msg;
-        logArea.prepend(div); // מוסיף למעלה
+        logArea.prepend(div);
     }
 
     async function processImages() {
@@ -103,40 +99,34 @@
 
         const btn = document.getElementById('uploadBtn');
         btn.disabled = true;
-        btn.innerText = "שולח נתונים, נא להמתין...";
-        document.getElementById('logArea').innerHTML = ''; // ניקוי לוגים קודמים
+        btn.innerText = "שולח נתונים...";
+        document.getElementById('logArea').innerHTML = '';
 
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            addLog(`מעבד תמונה ${i + 1} מתוך ${files.length} (${file.name})...`);
+            addLog(`מעבד תמונה ${i + 1} מתוך ${files.length}...`);
             
             try {
                 const data = await extractExifAndEncode(file);
-                data.distributorName = name; // הוספת שם השליח לנתונים
+                data.distributorName = name;
                 
                 await sendData(data);
                 addLog(`✅ תמונה ${i + 1} נשלחה בהצלחה!`, 'success');
                 
             } catch (err) {
                 addLog(`❌ שגיאה בתמונה ${i + 1}: ${err.message}`, 'error');
-                // שגיאת הרשאה אומרת שהקישור חסר את ה-sig
-                if(err.message.includes("401") || err.message.includes("403")) {
-                    addLog("שימו לב: נראה שחסרה חתימת אבטחה (sig) בקישור של Power Automate.", 'warn');
-                    break; // עוצר את הלולאה כי כל השאר ייכשלו גם
-                }
             }
         }
 
         btn.disabled = false;
         btn.innerText = "שלח דיווחים";
-        document.getElementById('photoUpload').value = ''; // איפוס בחירת הקבצים
+        document.getElementById('photoUpload').value = '';
     }
 
     function extractExifAndEncode(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = function(e) {
-                // חיתוך הקידומת כדי לשלוח רק את ה-Base64 הנקי למיקרוסופט
                 const rawBase64 = e.target.result.split(',')[1];
                 
                 EXIF.getData(file, function() {
@@ -144,18 +134,11 @@
                     const lon = EXIF.getTag(this, "GPSLongitude");
                     const latRef = EXIF.getTag(this, "GPSLatitudeRef") || "N";
                     const lonRef = EXIF.getTag(this, "GPSLongitudeRef") || "E";
-                    const dateRaw = EXIF.getTag(this, "DateTimeOriginal"); // YYYY:MM:DD HH:MM:SS
+                    const dateRaw = EXIF.getTag(this, "DateTimeOriginal");
 
-                    // חישוב מיקום - אם אין, מחזיר null
                     const latitude = lat ? convertToDecimal(lat, latRef) : null;
                     const longitude = lon ? convertToDecimal(lon, lonRef) : null;
-                    
-                    // המרת תאריך לפורמט ש-SharePoint מבין (ISO), אם אין שם זמן צילום.
                     const isoDate = parseExifDate(dateRaw);
-
-                    if(!latitude) {
-                        addLog(`⚠️ לא נמצא מיקום מדויק בתמונה ${file.name}`, 'warn');
-                    }
 
                     resolve({
                         imageName: file.name,
@@ -171,37 +154,30 @@
         });
     }
 
-    // המרת קואורדינטות לעשרוני
     function convertToDecimal(gpsArray, ref) {
         let decimal = gpsArray[0] + (gpsArray[1] / 60) + (gpsArray[2] / 3600);
         return (ref === "S" || ref === "W") ? (decimal * -1) : decimal;
     }
 
-    // המרת תאריך EXIF לתאריך תקני
     function parseExifDate(exifDate) {
-        if (!exifDate) return new Date().toISOString(); // אם אין תאריך, נשתמש בעכשיו
+        if (!exifDate) return new Date().toISOString();
         try {
             const parts = exifDate.split(' ');
             const dateParts = parts[0].split(':');
             const timeParts = parts[1].split(':');
-            const d = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0], timeParts[1], timeParts[2]);
-            return d.toISOString();
+            return new Date(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0], timeParts[1], timeParts[2]).toISOString();
         } catch(e) {
             return new Date().toISOString();
         }
     }
 
-    // שליחת הבקשה ל-Power Automate
     async function sendData(payload) {
         const response = await fetch(FLOW_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        
-        if (!response.ok) {
-            throw new Error(`קוד שגיאה מהשרת: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`שגיאת שרת: ${response.status}`);
     }
 </script>
 
